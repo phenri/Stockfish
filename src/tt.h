@@ -70,25 +70,28 @@ private:
 /// bigger than a cache line size. In case it is less, it should be padded to
 /// guarantee always aligned accesses.
 
+void FREE_MEM (void *);
+
 class TranspositionTable {
 
   static const unsigned ClusterSize = 4; // A cluster is 64 Bytes
 
 public:
- ~TranspositionTable() { free(mem); }
+ ~TranspositionTable() { FREE_MEM (mem); mem = NULL; } 
   void new_search() { ++generation; }
 
   const TTEntry* probe(const Key key) const;
   TTEntry* first_entry(const Key key) const;
   void refresh(const TTEntry* tte) const;
-  void set_size(size_t mbSize);
+  void resize();
+  void set_size(size_t mbSize, bool force);
+  void free_me ();
   void clear();
   void store(const Key key, Value v, Bound type, Depth d, Move m, Value statV);
-
+  void* mem;
 private:
   uint32_t hashMask;
   TTEntry* table;
-  void* mem;
   uint8_t generation; // Size must be not bigger than TTEntry::generation8
 };
 

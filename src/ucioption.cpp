@@ -39,7 +39,7 @@ namespace UCI {
 void on_logger(const Option& o) { start_logger(o); }
 void on_eval(const Option&) { Eval::init(); }
 void on_threads(const Option&) { Threads.read_uci_options(); }
-void on_hash_size(const Option& o) { TT.set_size(o); }
+void on_hash_size(const Option& o) { TT.set_size(o, false); }
 void on_clear_hash(const Option&) { TT.clear(); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
 
@@ -90,6 +90,7 @@ void init(OptionsMap& o) {
   o["UCI_AnalyseMode"]             = Option(false, on_eval);
   o["SyzygyProbeLimit"]            = Option(6, 0, 6);
   o["SyzygyPath"]                  = Option("", on_tb_path);
+  o["TryLargePages"]               = Option (false);
 }
 
 

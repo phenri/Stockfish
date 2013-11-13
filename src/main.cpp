@@ -29,6 +29,9 @@
 #include "tt.h"
 #include "ucioption.h"
 
+void SETUP_PRIVILEGES ();
+void FREE_MEM (void *);
+
 int main(int argc, char* argv[]) {
 
   std::cout << engine_info() << std::endl;
@@ -41,7 +44,7 @@ int main(int argc, char* argv[]) {
   Pawns::init();
   Eval::init();
   Threads.init();
-  TT.set_size(Options["Hash"]);
+  TT.set_size(Options["Hash"],true);
   Tablebases::init(Options["SyzygyPath"]);
 
   std::string args;
@@ -49,7 +52,9 @@ int main(int argc, char* argv[]) {
   for (int i = 1; i < argc; ++i)
       args += std::string(argv[i]) + " ";
 
+  SETUP_PRIVILEGES ();
   UCI::loop(args);
-
+  FREE_MEM (TT.mem);
+  TT.mem = NULL;
   Threads.exit();
 }
