@@ -22,26 +22,30 @@
 
 #include "bitboard.h"
 #include "tt.h"
+#include "platform.h"
 
 TranspositionTable TT; // Our global transposition table
 
+void CREATE_MEM (void **, int, uint64_t);
+void FREE_MEM (void *);
 
 /// TranspositionTable::set_size() sets the size of the transposition table,
 /// measured in megabytes. Transposition table consists of a power of 2 number
 /// of clusters and each cluster consists of ClusterSize number of TTEntry.
 
-void TranspositionTable::set_size(size_t mbSize) {
+void TranspositionTable::set_size(size_t mbSize, bool force) {
 
   assert(msb((mbSize << 20) / sizeof(TTEntry)) < 32);
 
-  uint32_t size = ClusterSize << msb((mbSize << 20) / sizeof(TTEntry[ClusterSize]));
+ uint64_t size = ClusterSize << msb((mbSize << 20) / sizeof(TTEntry[ClusterSize]));
 
-  if (hashMask == size - ClusterSize)
+  if (!force && hashMask == size - ClusterSize)
       return;
 
   hashMask = size - ClusterSize;
-  free(mem);
-  mem = calloc(size * sizeof(TTEntry) + CACHE_LINE_SIZE - 1, 1);
+  FREE_MEM (mem);
+  mem = NULL;
+  CREATE_MEM (&mem, 64, size * sizeof (TTEntry));
 
   if (!mem)
   {
@@ -50,7 +54,13 @@ void TranspositionTable::set_size(size_t mbSize) {
       exit(EXIT_FAILURE);
   }
 
+  memset (mem, 0, size * sizeof (TTEntry));
   table = (TTEntry*)((uintptr_t(mem) + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1));
+}
+
+void TranspositionTable::resize ()
+{
+  TT.set_size (((hashMask + ClusterSize) * sizeof(TTEntry)) >> 20, true);
 }
 
 

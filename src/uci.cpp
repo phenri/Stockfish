@@ -183,6 +183,10 @@ namespace {
         Options[name] = value;
     else
         sync_cout << "No such option: " << name << sync_endl;
+    if (name == "TryLargePages" && value == "true")
+      {
+        TT.resize ();
+      }
   }
 
 
