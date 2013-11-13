@@ -38,7 +38,7 @@ namespace UCI {
 void on_logger(const Option& o) { start_logger(o); }
 void on_eval(const Option&) { Eval::init(); }
 void on_threads(const Option&) { Threads.read_uci_options(); }
-void on_hash_size(const Option& o) { TT.set_size(o); }
+void on_hash_size(const Option& o) { TT.set_size(o, false); }
 void on_clear_hash(const Option&) { TT.clear(); }
 
 
@@ -86,6 +86,7 @@ void init(OptionsMap& o) {
   o["Slow Mover"]                  = Option(70, 10, 1000);
   o["UCI_Chess960"]                = Option(false);
   o["UCI_AnalyseMode"]             = Option(false, on_eval);
+  o["TryLargePages"]               = Option (false);
 }
 
 
