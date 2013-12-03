@@ -47,7 +47,7 @@ namespace Zobrist {
 
   Key psq[COLOR_NB][PIECE_TYPE_NB][SQUARE_NB];
   Key enpassant[FILE_NB];
-  Key castle[CASTLE_RIGHT_NB];
+  Key castling[CASTLING_FLAG_NB];
   Key side;
   Key exclusion;
 }
@@ -56,7 +56,7 @@ Key Position::exclusion_key() const { return st->key ^ Zobrist::exclusion;}
 
 namespace {
 
-// min_attacker() is an helper function used by see() to locate the least
+// min_attacker() is a helper function used by see() to locate the least
 // valuable attacker for the side to move, remove the attacker we just found
 // from the bitboards and scan for new X-ray attacks behind it.
 
@@ -82,7 +82,7 @@ PieceType min_attacker(const Bitboard* bb, const Square& to, const Bitboard& stm
 
 template<> FORCE_INLINE
 PieceType min_attacker<KING>(const Bitboard*, const Square&, const Bitboard&, Bitboard&, Bitboard&) {
-  return KING; // No need to update bitboards, it is the last cycle
+  return KING; // No need to update bitboards: it is the last cycle
 }
 
 } // namespace
@@ -109,9 +109,9 @@ CheckInfo::CheckInfo(const Position& pos) {
 
 /// Position::init() initializes at startup the various arrays used to compute
 /// hash keys and the piece square tables. The latter is a two-step operation:
-/// First, the white halves of the tables are copied from PSQT[] tables. Second,
-/// the black halves of the tables are initialized by flipping and changing the
-/// sign of the white scores.
+/// Firstly, the white halves of the tables are copied from PSQT[] tables.
+/// Secondly, the black halves of the tables are initialized by flipping and
+/// changing the sign of the white scores.
 
 void Position::init() {
 
@@ -125,13 +125,13 @@ void Position::init() {
   for (File f = FILE_A; f <= FILE_H; ++f)
       Zobrist::enpassant[f] = rk.rand<Key>();
 
-  for (int cr = CASTLES_NONE; cr <= ALL_CASTLES; ++cr)
+  for (int cf = NO_CASTLING; cf <= ANY_CASTLING; ++cf)
   {
-      Bitboard b = cr;
+      Bitboard b = cf;
       while (b)
       {
-          Key k = Zobrist::castle[1ULL << pop_lsb(&b)];
-          Zobrist::castle[cr] ^= k ? k : rk.rand<Key>();
+          Key k = Zobrist::castling[1ULL << pop_lsb(&b)];
+          Zobrist::castling[cf] ^= k ? k : rk.rand<Key>();
       }
   }
 
@@ -155,7 +155,7 @@ void Position::init() {
 
 
 /// Position::operator=() creates a copy of 'pos'. We want the new born Position
-/// object do not depend on any external data so we detach state pointer from
+/// object to not depend on any external data so we detach state pointer from
 /// the source one.
 
 Position& Position::operator=(const Position& pos) {
@@ -182,11 +182,11 @@ void Position::set(const string& fenStr, bool isChess960, Thread* th) {
    A FEN string contains six fields separated by a space. The fields are:
 
    1) Piece placement (from white's perspective). Each rank is described, starting
-      with rank 8 and ending with rank 1; within each rank, the contents of each
+      with rank 8 and ending with rank 1. Within each rank, the contents of each
       square are described from file A through file H. Following the Standard
       Algebraic Notation (SAN), each piece is identified by a single letter taken
       from the standard English names. White pieces are designated using upper-case
-      letters ("PNBRQK") while Black take lowercase ("pnbrqk"). Blank squares are
+      letters ("PNBRQK") whilst Black uses lowercase ("pnbrqk"). Blank squares are
       noted using digits 1 through 8 (the number of blank squares), and "/"
       separates ranks.
 
@@ -263,7 +263,7 @@ void Position::set(const string& fenStr, bool isChess960, Thread* th) {
       else
           continue;
 
-      set_castle_right(c, rsq);
+      set_castling_flag(c, rsq);
   }
 
   // 4. En passant square. Ignore if no pawn capture is possible
@@ -297,35 +297,35 @@ void Position::set(const string& fenStr, bool isChess960, Thread* th) {
 }
 
 
-/// Position::set_castle_right() is an helper function used to set castling
-/// rights given the corresponding color and the rook starting square.
+/// Position::set_castling_flag() is a helper function used to set castling
+/// flags given the corresponding color and the rook starting square.
 
-void Position::set_castle_right(Color c, Square rfrom) {
+void Position::set_castling_flag(Color c, Square rfrom) {
 
   Square kfrom = king_square(c);
   CastlingSide cs = kfrom < rfrom ? KING_SIDE : QUEEN_SIDE;
-  CastleRight cr = make_castle_right(c, cs);
+  CastlingFlag cf = make_castling_flag(c, cs);
 
-  st->castleRights |= cr;
-  castleRightsMask[kfrom] |= cr;
-  castleRightsMask[rfrom] |= cr;
-  castleRookSquare[c][cs] = rfrom;
+  st->castlingFlags |= cf;
+  castlingFlagsMask[kfrom] |= cf;
+  castlingFlagsMask[rfrom] |= cf;
+  castlingRookSquare[c][cs] = rfrom;
 
   Square kto = relative_square(c, cs == KING_SIDE ? SQ_G1 : SQ_C1);
   Square rto = relative_square(c, cs == KING_SIDE ? SQ_F1 : SQ_D1);
 
   for (Square s = std::min(rfrom, rto); s <= std::max(rfrom, rto); ++s)
       if (s != kfrom && s != rfrom)
-          castlePath[c][cs] |= s;
+          castlingPath[c][cs] |= s;
 
   for (Square s = std::min(kfrom, kto); s <= std::max(kfrom, kto); ++s)
       if (s != kfrom && s != rfrom)
-          castlePath[c][cs] |= s;
+          castlingPath[c][cs] |= s;
 }
 
 
-/// Position::fen() returns a FEN representation of the position. In case
-/// of Chess960 the Shredder-FEN notation is used. Mainly a debugging function.
+/// Position::fen() returns a FEN representation of the position. In case of
+/// Chess960 the Shredder-FEN notation is used. This is mainly a debugging function.
 
 const string Position::fen() const {
 
@@ -357,18 +357,18 @@ const string Position::fen() const {
   ss << (sideToMove == WHITE ? " w " : " b ");
 
   if (can_castle(WHITE_OO))
-      ss << (chess960 ? file_to_char(file_of(castle_rook_square(WHITE,  KING_SIDE)), false) : 'K');
+      ss << (chess960 ? file_to_char(file_of(castling_rook_square(WHITE,  KING_SIDE)), false) : 'K');
 
   if (can_castle(WHITE_OOO))
-      ss << (chess960 ? file_to_char(file_of(castle_rook_square(WHITE, QUEEN_SIDE)), false) : 'Q');
+      ss << (chess960 ? file_to_char(file_of(castling_rook_square(WHITE, QUEEN_SIDE)), false) : 'Q');
 
   if (can_castle(BLACK_OO))
-      ss << (chess960 ? file_to_char(file_of(castle_rook_square(BLACK,  KING_SIDE)),  true) : 'k');
+      ss << (chess960 ? file_to_char(file_of(castling_rook_square(BLACK,  KING_SIDE)),  true) : 'k');
 
   if (can_castle(BLACK_OOO))
-      ss << (chess960 ? file_to_char(file_of(castle_rook_square(BLACK, QUEEN_SIDE)),  true) : 'q');
+      ss << (chess960 ? file_to_char(file_of(castling_rook_square(BLACK, QUEEN_SIDE)),  true) : 'q');
 
-  if (st->castleRights == CASTLES_NONE)
+  if (st->castlingFlags == NO_CASTLING)
       ss << '-';
 
   ss << (ep_square() == SQ_NONE ? " - " : " " + square_to_string(ep_square()) + " ")
@@ -415,15 +415,15 @@ const string Position::pretty(Move move) const {
 }
 
 
-/// Position:hidden_checkers() returns a bitboard of all pinned / discovery check
-/// pieces, according to the call parameters. Pinned pieces protect our king,
-/// discovery check pieces attack the enemy king.
+/// Position:hidden_checkers() returns a bitboard of all pinned / discovered check
+/// pieces, according to the call parameters. Pinned pieces protect our king and
+/// discovered check pieces attack the enemy king.
 
 Bitboard Position::hidden_checkers(Square ksq, Color c, Color toMove) const {
 
   Bitboard b, pinners, result = 0;
 
-  // Pinners are sliders that give check when pinned piece is removed
+  // Pinners are sliders that give check when a pinned piece is removed
   pinners = (  (pieces(  ROOK, QUEEN) & PseudoAttacks[ROOK  ][ksq])
              | (pieces(BISHOP, QUEEN) & PseudoAttacks[BISHOP][ksq])) & pieces(c);
 
@@ -439,7 +439,7 @@ Bitboard Position::hidden_checkers(Square ksq, Color c, Color toMove) const {
 
 
 /// Position::attackers_to() computes a bitboard of all pieces which attack a
-/// given square. Slider attacks use occ bitboard as occupancy.
+/// given square. Slider attacks use the occ bitboard to indicate occupancy.
 
 Bitboard Position::attackers_to(Square s, Bitboard occ) const {
 
@@ -489,7 +489,7 @@ bool Position::legal(Move m, Bitboard pinned) const {
   // square is attacked by the opponent. Castling moves are checked
   // for legality during move generation.
   if (type_of(piece_on(from)) == KING)
-      return type_of(m) == CASTLE || !(attackers_to(to_sq(m)) & pieces(~us));
+      return type_of(m) == CASTLING || !(attackers_to(to_sq(m)) & pieces(~us));
 
   // A non-king move is legal if and only if it is not pinned or it
   // is moving along the ray towards or away from the king.
@@ -536,7 +536,7 @@ bool Position::pseudo_legal(const Move m) const {
           return false;
 
       // We have already handled promotion moves, so destination
-      // cannot be on the 8/1th rank.
+      // cannot be on the 8th/1st rank.
       if (rank_of(to) == RANK_8 || rank_of(to) == RANK_1)
           return false;
 
@@ -593,8 +593,8 @@ bool Position::pseudo_legal(const Move m) const {
       return false;
 
   // Evasions generator already takes care to avoid some kind of illegal moves
-  // and pl_move_is_legal() relies on this. So we have to take care that the
-  // same kind of moves are filtered out here.
+  // and pl_move_is_legal() relies on this. We therefore have to take care that
+  // the same kind of moves are filtered out here.
   if (checkers())
   {
       if (type_of(pc) != KING)
@@ -629,18 +629,15 @@ bool Position::gives_check(Move m, const CheckInfo& ci) const {
   Square to = to_sq(m);
   PieceType pt = type_of(piece_on(from));
 
-  // Direct check ?
+  // Is there a direct check ?
   if (ci.checkSq[pt] & to)
       return true;
 
-  // Discovery check ?
-  if (unlikely(ci.dcCandidates) && (ci.dcCandidates & from))
-  {
-      // For pawn and king moves we need to verify also direction
-      if (   (pt != PAWN && pt != KING)
-          || !aligned(from, to, king_square(~sideToMove)))
-          return true;
-  }
+  // Is there a discovered check ?
+  if (   unlikely(ci.dcCandidates)
+      && (ci.dcCandidates & from)
+      && !aligned(from, to, king_square(~sideToMove)))
+      return true;
 
   // Can we skip the ugly special cases ?
   if (type_of(m) == NORMAL)
@@ -655,7 +652,7 @@ bool Position::gives_check(Move m, const CheckInfo& ci) const {
       return attacks_bb(Piece(promotion_type(m)), to, pieces() ^ from) & ksq;
 
   // En passant capture with check ? We have already handled the case
-  // of direct checks and ordinary discovered check, the only case we
+  // of direct checks and ordinary discovered check, so the only case we
   // need to handle is the unusual case of a discovered check through
   // the captured pawn.
   case ENPASSANT:
@@ -666,10 +663,10 @@ bool Position::gives_check(Move m, const CheckInfo& ci) const {
       return  (attacks_bb<  ROOK>(ksq, b) & pieces(us, QUEEN, ROOK))
             | (attacks_bb<BISHOP>(ksq, b) & pieces(us, QUEEN, BISHOP));
   }
-  case CASTLE:
+  case CASTLING:
   {
       Square kfrom = from;
-      Square rfrom = to; // 'King captures the rook' notation
+      Square rfrom = to; // Castling is encoded as 'King captures the rook'
       Square kto = relative_square(us, rfrom > kfrom ? SQ_G1 : SQ_C1);
       Square rto = relative_square(us, rfrom > kfrom ? SQ_F1 : SQ_D1);
 
@@ -703,7 +700,7 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
 
   // Copy some fields of old state to our new StateInfo object except the ones
   // which are going to be recalculated from scratch anyway, then switch our state
-  // pointer to point to the new, ready to be updated, state.
+  // pointer to point to the new (ready to be updated) state.
   std::memcpy(&newSt, st, StateCopySize64 * sizeof(uint64_t));
 
   newSt.previous = st;
@@ -712,7 +709,7 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
   // Update side to move
   k ^= Zobrist::side;
 
-  // Increment ply counters.In particular rule50 will be later reset it to zero
+  // Increment ply counters.In particular rule50 will be reset to zero later on
   // in case of a capture or a pawn move.
   ++gamePly;
   ++st->rule50;
@@ -727,20 +724,20 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
   PieceType captured = type_of(m) == ENPASSANT ? PAWN : type_of(piece_on(to));
 
   assert(color_of(pc) == us);
-  assert(piece_on(to) == NO_PIECE || color_of(piece_on(to)) == them || type_of(m) == CASTLE);
+  assert(piece_on(to) == NO_PIECE || color_of(piece_on(to)) == them || type_of(m) == CASTLING);
   assert(captured != KING);
 
-  if (type_of(m) == CASTLE)
+  if (type_of(m) == CASTLING)
   {
       assert(pc == make_piece(us, KING));
 
       bool kingSide = to > from;
-      Square rfrom = to; // Castle is encoded as "king captures friendly rook"
+      Square rfrom = to; // Castling is encoded as "king captures friendly rook"
       Square rto = relative_square(us, kingSide ? SQ_F1 : SQ_D1);
       to = relative_square(us, kingSide ? SQ_G1 : SQ_C1);
       captured = NO_PIECE_TYPE;
 
-      do_castle(from, to, rfrom, rto);
+      do_castling(from, to, rfrom, rto);
 
       st->psq += psq[us][ROOK][rto] - psq[us][ROOK][rfrom];
       k ^= Zobrist::psq[us][ROOK][rfrom] ^ Zobrist::psq[us][ROOK][rto];
@@ -797,25 +794,25 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
       st->epSquare = SQ_NONE;
   }
 
-  // Update castle rights if needed
-  if (st->castleRights && (castleRightsMask[from] | castleRightsMask[to]))
+  // Update castling flags if needed
+  if (st->castlingFlags && (castlingFlagsMask[from] | castlingFlagsMask[to]))
   {
-      int cr = castleRightsMask[from] | castleRightsMask[to];
-      k ^= Zobrist::castle[st->castleRights & cr];
-      st->castleRights &= ~cr;
+      int cf = castlingFlagsMask[from] | castlingFlagsMask[to];
+      k ^= Zobrist::castling[st->castlingFlags & cf];
+      st->castlingFlags &= ~cf;
   }
 
   // Prefetch TT access as soon as we know the new hash key
   prefetch((char*)TT.first_entry(k));
 
-  // Move the piece. The tricky Chess960 castle is handled earlier
-  if (type_of(m) != CASTLE)
+  // Move the piece. The tricky Chess960 castling is handled earlier
+  if (type_of(m) != CASTLING)
       move_piece(from, to, us, pt);
 
   // If the moving piece is a pawn do some special extra work
   if (pt == PAWN)
   {
-      // Set en-passant square, only if moved pawn can be captured
+      // Set en-passant square if the moved pawn can be captured
       if (   (int(to) ^ int(from)) == 16
           && (attacks_from<PAWN>(from + pawn_push(us), us) & pieces(them, PAWN)))
       {
@@ -863,7 +860,7 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
   // Update the key with the final value
   st->key = k;
 
-  // Update checkers bitboard, piece must be already moved
+  // Update checkers bitboard: piece must be already moved
   st->checkersBB = 0;
 
   if (moveIsCheck)
@@ -876,7 +873,7 @@ void Position::do_move(Move m, StateInfo& newSt, const CheckInfo& ci, bool moveI
           if (ci.checkSq[pt] & to)
               st->checkersBB |= to;
 
-          // Discovery checks
+          // Discovered checks
           if (ci.dcCandidates && (ci.dcCandidates & from))
           {
               if (pt != ROOK)
@@ -910,7 +907,7 @@ void Position::undo_move(Move m) {
   PieceType pt = type_of(piece_on(to));
   PieceType captured = st->capturedType;
 
-  assert(empty(from) || type_of(m) == CASTLE);
+  assert(empty(from) || type_of(m) == CASTLING);
   assert(captured != KING);
 
   if (type_of(m) == PROMOTION)
@@ -926,15 +923,15 @@ void Position::undo_move(Move m) {
       pt = PAWN;
   }
 
-  if (type_of(m) == CASTLE)
+  if (type_of(m) == CASTLING)
   {
       bool kingSide = to > from;
-      Square rfrom = to; // Castle is encoded as "king captures friendly rook"
+      Square rfrom = to; // Castling is encoded as "king captures friendly rook"
       Square rto = relative_square(us, kingSide ? SQ_F1 : SQ_D1);
       to = relative_square(us, kingSide ? SQ_G1 : SQ_C1);
       captured = NO_PIECE_TYPE;
       pt = KING;
-      do_castle(to, from, rto, rfrom);
+      do_castling(to, from, rto, rfrom);
   }
   else
       move_piece(to, from, us, pt); // Put the piece back at the source square
@@ -964,10 +961,10 @@ void Position::undo_move(Move m) {
 }
 
 
-/// Position::do_castle() is a helper used to do/undo a castling move. This
+/// Position::do_castling() is a helper used to do/undo a castling move. This
 /// is a bit tricky, especially in Chess960.
 
-void Position::do_castle(Square kfrom, Square kto, Square rfrom, Square rto) {
+void Position::do_castling(Square kfrom, Square kto, Square rfrom, Square rto) {
 
   // Remove both pieces first since squares could overlap in Chess960
   remove_piece(kfrom, sideToMove, KING);
@@ -1051,10 +1048,10 @@ int Position::see(Move m, int asymmThreshold) const {
   stm = color_of(piece_on(from));
   occupied = pieces() ^ from;
 
-  // Castle moves are implemented as king capturing the rook so cannot be
+  // Castling moves are implemented as king capturing the rook so cannot be
   // handled correctly. Simply return 0 that is always the correct value
   // unless in the rare case the rook ends up under attack.
-  if (type_of(m) == CASTLE)
+  if (type_of(m) == CASTLING)
       return 0;
 
   if (type_of(m) == ENPASSANT)
@@ -1136,13 +1133,13 @@ void Position::clear() {
 
 
 /// Position::compute_key() computes the hash key of the position. The hash
-/// key is usually updated incrementally as moves are made and unmade, the
+/// key is usually updated incrementally as moves are made and unmade. The
 /// compute_key() function is only used when a new position is set up, and
 /// to verify the correctness of the hash key when running in debug mode.
 
 Key Position::compute_key() const {
 
-  Key k = Zobrist::castle[st->castleRights];
+  Key k = Zobrist::castling[st->castlingFlags];
 
   for (Bitboard b = pieces(); b; )
   {
@@ -1161,8 +1158,8 @@ Key Position::compute_key() const {
 
 
 /// Position::compute_pawn_key() computes the hash key of the position. The
-/// hash key is usually updated incrementally as moves are made and unmade,
-/// the compute_pawn_key() function is only used when a new position is set
+/// hash key is usually updated incrementally as moves are made and unmade.
+/// The compute_pawn_key() function is only used when a new position is set
 /// up, and to verify the correctness of the pawn hash key when running in
 /// debug mode.
 
@@ -1181,8 +1178,8 @@ Key Position::compute_pawn_key() const {
 
 
 /// Position::compute_material_key() computes the hash key of the position.
-/// The hash key is usually updated incrementally as moves are made and unmade,
-/// the compute_material_key() function is only used when a new position is set
+/// The hash key is usually updated incrementally as moves are made and unmade.
+/// The compute_material_key() function is only used when a new position is set
 /// up, and to verify the correctness of the material hash key when running in
 /// debug mode.
 
@@ -1221,7 +1218,7 @@ Score Position::compute_psq_score() const {
 
 /// Position::compute_non_pawn_material() computes the total non-pawn middle
 /// game material value for the given side. Material values are updated
-/// incrementally during the search, this function is only used while
+/// incrementally during the search. This function is only used when
 /// initializing a new Position object.
 
 Value Position::compute_non_pawn_material(Color c) const {
@@ -1236,7 +1233,7 @@ Value Position::compute_non_pawn_material(Color c) const {
 
 
 /// Position::is_draw() tests whether the position is drawn by material,
-/// repetition, or the 50 moves rule. It does not detect stalemates, this
+/// repetition, or the 50 moves rule. It does not detect stalemates: this
 /// must be done by the search.
 bool Position::is_draw() const {
 
@@ -1271,7 +1268,7 @@ bool Position::is_draw() const {
 
 
 /// Position::flip() flips position with the white and black sides reversed. This
-/// is only useful for debugging especially for finding evaluation symmetry bugs.
+/// is only useful for debugging e.g. for finding evaluation symmetry bugs.
 
 static char toggle_case(char c) {
   return char(islower(c) ? toupper(c) : tolower(c));
@@ -1308,7 +1305,7 @@ void Position::flip() {
 }
 
 
-/// Position::pos_is_ok() performs some consitency checks for the position object.
+/// Position::pos_is_ok() performs some consistency checks for the position object.
 /// This is meant to be helpful when debugging.
 
 bool Position::pos_is_ok(int* failedStep) const {
@@ -1329,7 +1326,7 @@ bool Position::pos_is_ok(int* failedStep) const {
   const bool debugNonPawnMaterial = all || false;
   const bool debugPieceCounts     = all || false;
   const bool debugPieceList       = all || false;
-  const bool debugCastleSquares   = all || false;
+  const bool debugCastlingSquares = all || false;
 
   *step = 1;
 
@@ -1413,18 +1410,18 @@ bool Position::pos_is_ok(int* failedStep) const {
                       || index[pieceList[c][pt][i]] != i)
                       return false;
 
-  if ((*step)++, debugCastleSquares)
+  if ((*step)++, debugCastlingSquares)
       for (Color c = WHITE; c <= BLACK; ++c)
           for (CastlingSide s = KING_SIDE; s <= QUEEN_SIDE; s = CastlingSide(s + 1))
           {
-              CastleRight cr = make_castle_right(c, s);
+              CastlingFlag cf = make_castling_flag(c, s);
 
-              if (!can_castle(cr))
+              if (!can_castle(cf))
                   continue;
 
-              if (  (castleRightsMask[king_square(c)] & cr) != cr
-                  || piece_on(castleRookSquare[c][s]) != make_piece(c, ROOK)
-                  || castleRightsMask[castleRookSquare[c][s]] != cr)
+              if (  (castlingFlagsMask[king_square(c)] & cf) != cf
+                  || piece_on(castlingRookSquare[c][s]) != make_piece(c, ROOK)
+                  || castlingFlagsMask[castlingRookSquare[c][s]] != cf)
                   return false;
           }
 
