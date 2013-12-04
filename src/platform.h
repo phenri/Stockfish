@@ -89,8 +89,6 @@ inline int64_t system_time_to_msec() {
 #undef WIN32_LEAN_AND_MEAN
 #undef NOMINMAX
 
-#define MEMALIGN(a, b, c) a = _aligned_malloc (c, b)
-#define ALIGNED_FREE(x) _aligned_free (x);
 
 // We use critical sections on Windows to support Windows XP and older versions.
 // Unfortunately, cond_wait() is racy between lock_release() and WaitForSingleObject()
