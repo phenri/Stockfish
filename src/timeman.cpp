@@ -1,7 +1,7 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
-  Copyright (C) 2008-2013 Marco Costalba, Joona Kiiski, Tord Romstad
+  Copyright (C) 2008-2014 Marco Costalba, Joona Kiiski, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -34,8 +34,6 @@ namespace {
 
   const double xscale     = 9.3;
   const double xshift     = 59.8;
-  const double yscale     = 7780;
-  const double yshift     = 1e-3; // Larger than 0. Ensures a non-zero importance
   const double skewfactor = 0.172;
 
 
@@ -46,7 +44,7 @@ namespace {
 
   double move_importance(int ply) {
 
-    return yscale / pow((1 + exp((ply - xshift) / xscale)), skewfactor) + yshift;
+    return pow((1 + exp((ply - xshift) / xscale)), -skewfactor);
   }
 
 
