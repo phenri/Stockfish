@@ -625,12 +625,12 @@ namespace {
     {
         ss->currentMove = MOVE_NULL;
 
-        assert(eval - beta >= 0);
+        // Null move dynamic reduction based on depth
+        Depth R = 3 * ONE_PLY + depth / 4;
 
-        // Null move dynamic reduction based on depth and value
-        Depth R =  3 * ONE_PLY
-                 + depth / 4
-                 + int(eval - beta) / PawnValueMg * ONE_PLY;
+        // Null move dynamic reduction based on value
+        if (eval - PawnValueMg > beta)
+            R += ONE_PLY;
 
         pos.do_null_move(st);
         (ss+1)->skipNullMove = true;
@@ -650,8 +650,7 @@ namespace {
 
             // Do verification search at high depths
             ss->skipNullMove = true;
-            Value v = depth-R < ONE_PLY ? qsearch<NonPV, false>(pos, ss, beta-1, beta, DEPTH_ZERO)
-                                        :  search<NonPV>(pos, ss, beta-1, beta, depth-R, false);
+            Value v = search<NonPV>(pos, ss, alpha, beta, depth-R, false);
             ss->skipNullMove = false;
 
             if (v >= beta)
